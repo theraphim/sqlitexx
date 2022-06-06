@@ -9,19 +9,34 @@ import (
 	"zombiezen.com/go/sqlite/sqlitex"
 )
 
-func PooledExecute(ctx context.Context, pool *sqlitex.Pool, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
+type Executor struct {
+	Transient bool
+}
+
+func (s Executor) PooledExecute(ctx context.Context, pool *sqlitex.Pool, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
 	conn := pool.Get(ctx)
 	if conn == nil {
 		return ctx.Err()
 	}
 	defer pool.Put(conn)
 
-	return JustExec(conn, query, prepFn, resultFn)
+	return s.JustExec(conn, query, prepFn, resultFn)
 }
 
-func JustExec(conn *sqlite.Conn, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
+func PooledExecute(ctx context.Context, pool *sqlitex.Pool, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
+	return Executor{}.PooledExecute(ctx, pool, query, prepFn, resultFn)
+}
+
+func (s Executor) JustExec(conn *sqlite.Conn, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
 	var stmt *sqlite.Stmt
 	var err error
+
+	if s.Transient {
+		stmt, _, err = conn.PrepareTransient(query)
+	} else {
+		stmt, err = conn.Prepare(query)
+	}
+
 	stmt, err = conn.Prepare(query)
 	if err != nil {
 		return err
@@ -30,11 +45,20 @@ func JustExec(conn *sqlite.Conn, query string, prepFn func(*sqlite.Stmt), result
 		prepFn(stmt)
 	}
 	err = execLoop(stmt, resultFn)
-	resetErr := stmt.Reset()
+	var resetErr error
+	if s.Transient {
+		resetErr = stmt.Finalize()
+	} else {
+		resetErr = stmt.Reset()
+	}
 	if err == nil {
 		err = resetErr
 	}
 	return err
+}
+
+func JustExec(conn *sqlite.Conn, query string, prepFn func(*sqlite.Stmt), resultFn func(*sqlite.Stmt) error) error {
+	return Executor{}.JustExec(conn, query, prepFn, resultFn)
 }
 
 func execLoop(stmt *sqlite.Stmt, resultFn func(stmt *sqlite.Stmt) error) error {
