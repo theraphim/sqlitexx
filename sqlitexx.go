@@ -97,3 +97,13 @@ func StmtGetBytesName(stmt *sqlite.Stmt, index string) []byte {
 	stmt.GetBytes(index, result)
 	return result
 }
+
+func StmtGetBytes(stmt *sqlite.Stmt, index int) []byte {
+	n := stmt.ColumnLen(index)
+	if n == 0 {
+		return nil
+	}
+	result := make([]byte, n)
+	stmt.ColumnBytes(index, result)
+	return result
+}
