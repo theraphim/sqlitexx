@@ -36,8 +36,6 @@ func (s Executor) JustExec(conn *sqlite.Conn, query string, prepFn func(*sqlite.
 	} else {
 		stmt, err = conn.Prepare(query)
 	}
-
-	stmt, err = conn.Prepare(query)
 	if err != nil {
 		return err
 	}
